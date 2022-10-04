@@ -1,9 +1,11 @@
 import json
 import logging
 import os
+import sys
 import time
 from http import HTTPStatus
 
+from logging.handlers import RotatingFileHandler
 import requests
 import telegram
 from dotenv import load_dotenv
@@ -22,7 +24,7 @@ RETRY_TIME = 600
 ENDPOINT = 'https://practicum.yandex.ru/api/user_api/homework_statuses/'
 HEADERS = {'Authorization': f'OAuth {PRACTICUM_TOKEN}'}
 
-HOMEWORK_STATUSES = {
+VERDICT = {
     'approved': 'Работа проверена: ревьюеру всё понравилось. Ура!',
     'reviewing': 'Работа взята на проверку ревьюером.',
     'rejected': 'Работа проверена: у ревьюера есть замечания.'
@@ -36,8 +38,17 @@ logging.basicConfig(
     level=logging.INFO,
     filename='main.log',
     filemode='w')
+
 logger = logging.getLogger(__name__)
-logger.addHandler(logging.StreamHandler())
+logger.setLevel(logging.INFO)
+formatter = logging.Formatter(
+    '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+handler = RotatingFileHandler('my_logger.log', maxBytes=50000000, backupCount=5)
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+
+
 
 
 def send_message(bot, message):
@@ -72,50 +83,51 @@ def get_api_answer(current_timestamp):
         raise exceptions.WrongStatusCodeError(message)
 
 
-# if isinstance(e, list):
 def check_response(response):
     """Проверяет ответ API на корректность."""
-    try:
+    if not isinstance(response, dict):
+        logger.error('Ответ не является словарем')
+        response = response[0]
+    if 'homeworks' in response:
         homeworks = response['homeworks']
-    except KeyError:
-        logger.error('Отсутствует ключ у homeworks')
-        raise KeyError('Отсутствует ключ у homeworks')
-    try:
-        homework = homeworks
-    except IndexError:
-        logger.error('Список домашних работ пуст')
-        raise IndexError('Список домашних работ пуст')
-    if not isinstance(homework, list):
-        logger.error('Список домашних работ пуст')
+    else:
+        logger.error('Отсутствует ключ homeworks')
+        raise KeyError('Отсутствует ключ homeworks')
+    if not isinstance(homeworks, list):
+        logger.error('homeworks не является списком')
         raise exceptions.HomeworksIsListError('HomeworksIsListError')
-    return homework
+    return homeworks
 
 
 def parse_status(homework):
     """Извлекает статус работы и готовит строку из словаря."""
     # Извлекает название урока последней работы
+    if not isinstance(homework, dict):
+        try:
+            homework = homework[0]
+        except IndexError:
+            logger.error('Список домашних работ пуст')
+            raise IndexError('Список домашних работ пуст')
     homework_name = homework.get('homework_name')
     # Извлекает статус последней работы
     homework_status = homework.get('status')
-    # Получает строку из словоря
-    verdict = HOMEWORK_STATUSES[homework_status]
+    try:
+        verdict = VERDICT[homework_status]
+    except exceptions.UndifferentStatus as error:
+        logger.error('Недокументированный статус домашней работы')
+        message = f'Недокументированный статус домашней работы: {error}'
+        raise exceptions.WrongStatusCodeError(message)
     # Возвращает строку для сообщения
     return f'Изменился статус проверки работы "{homework_name}". {verdict}'
 
 
 def check_tokens():
     """Проверяет наличие и корректность токенов."""
-    if PRACTICUM_TOKEN is None:
-        logger.critical('Отсутствует PRACTICUM_TOKEN')
-        return False
-    elif TELEGRAM_TOKEN is None:
-        logger.critical('Отсутствует TELEGRAM_TOKEN')
-        return False
-    elif TELEGRAM_CHAT_ID is None:
-        logger.critical('Отсутствует TELEGRAM_CHAT_ID')
-        return False
-    else:
+    if all([PRACTICUM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID]):
         return True
+    else:
+        logger.critical('Отсутствует одна или несколько переменных') 
+        return False 
 
 
 def main():
@@ -125,9 +137,13 @@ def main():
     error_message = ''
     while True:
         try:
+            if check_tokens() is False:
+                sys.exit(1)
             response = get_api_answer(current_timestamp)
             statuses = check_response(response)
-            string = parse_status(statuses)
+            string = ''
+            # Сравнивается статус, который был 10 минут назад
+            # и новый статус, если !=, то отправляется сообщение
             if string != parse_status(statuses):
                 string = parse_status(statuses)
                 send_message(bot, string)

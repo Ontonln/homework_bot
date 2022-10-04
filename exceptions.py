@@ -16,3 +16,11 @@ class WrongStatusCodeError(Exception):
 
 class HomeworksIsListError(Exception):
     pass
+
+
+class ResponseNotDict(Exception):
+    pass
+
+
+class UndifferentStatus(Exception):
+    pass
