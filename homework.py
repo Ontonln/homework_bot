@@ -44,12 +44,10 @@ logger.setLevel(logging.INFO)
 formatter = logging.Formatter(
     '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
-handler = RotatingFileHandler('my_logger.log', maxBytes=50000000, backupCount=5)
+handler = RotatingFileHandler('my_logger.log',
+    maxBytes=50000000, backupCount=5)
 handler.setFormatter(formatter)
 logger.addHandler(handler)
-
-
-
 
 def send_message(bot, message):
     """Отправляет сообщение."""
@@ -127,7 +125,7 @@ def check_tokens():
         return True
     else:
         logger.critical('Отсутствует одна или несколько переменных') 
-        return False 
+        return False
 
 
 def main():
