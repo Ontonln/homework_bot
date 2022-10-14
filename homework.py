@@ -44,8 +44,7 @@ logger.setLevel(logging.INFO)
 formatter = logging.Formatter(
     '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
-handler = RotatingFileHandler('my_logger.log', maxBytes=50000000,
-                              backupCount=5)
+handler = logging.FileHandler('my_logger.log', 'w', 'utf-8')
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 
@@ -63,7 +62,7 @@ def send_message(bot, message):
 
 def get_api_answer(current_timestamp):
     """Делает запрос к API."""
-    timestamp = current_timestamp or int(time.time())
+    timestamp = current_timestamp # or int(time.time())
     params = {'from_date': timestamp}
     try:
         response = requests.get(ENDPOINT, headers=HEADERS, params=params)
@@ -124,23 +123,20 @@ def check_tokens():
     """Проверяет наличие и корректность токенов."""
     if all([PRACTICUM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID]):
         return True
-    else:
-        logger.critical('Отсутствует одна или несколько переменных')
-        return False
 
 
 def main():
     """Основная логика работы бота."""
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
     current_timestamp = int(time.time())
+    if check_tokens() is False:
+        sys.exit(1)
     error_message = ''
+    string = ''
     while True:
         try:
-            if check_tokens() is False:
-                sys.exit(1)
             response = get_api_answer(current_timestamp)
             statuses = check_response(response)
-            string = ''
             # Сравнивается статус, который был 10 минут назад
             # и новый статус, если !=, то отправляется сообщение
             if string != parse_status(statuses):
